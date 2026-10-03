@@ -56,6 +56,47 @@ impl RaftNode {
             },
         }
     }
+    
+    pub fn handle_request_vote(&mut self, req: RequestVote) -> RequestVoteReply {
+        if req.term > self.persistent_state.current_term {
+            self.persistent_state.current_term = req.term;
+            self.role = Role::Follower;
+            self.persistent_state.voted_for = None;
+        }
+
+        let mut vote_granted = false;
+
+        if req.term >= self.persistent_state.current_term {
+            let can_vote = match self.persistent_state.voted_for {
+                None => true,
+                Some(id) if id == req.candidate_id => true,
+                _ => false,
+            };
+
+            if can_vote {
+                let last_index = (self.persistent_state.log.len() - 1) as u64;
+                let last_term = self.persistent_state.log.last().unwrap().term;
+
+                let log_is_up_to_date = if req.last_log_term > last_term {
+                    true
+                } else if req.last_log_term == last_term && req.last_log_index >= last_index {
+                    true
+                } else {
+                    false
+                };
+
+                if log_is_up_to_date {
+                    vote_granted = true;
+                    self.persistent_state.voted_for = Some(req.candidate_id);
+                }
+            }
+        }
+
+        RequestVoteReply {
+            term: self.persistent_state.current_term,
+            vote_granted,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
